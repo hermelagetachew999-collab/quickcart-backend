@@ -4,7 +4,6 @@ import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
-import serverless from "serverless-http";
 
 dotenv.config();
 
@@ -143,4 +142,6 @@ app.post("/api/reset-password", async (req, res) => {
   }
 });
 
-export const handler = serverless(app);
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
+
