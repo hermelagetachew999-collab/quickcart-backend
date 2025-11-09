@@ -12,7 +12,7 @@ app.use(express.json());
 app.use(
   cors({
     origin: [
-      "https://quickcart-frontend-mu.vercel.app",
+      "https://quickcart-frontend-933oucsou.vercel.app",
       "http://localhost:5173"
     ],
     credentials: true,
