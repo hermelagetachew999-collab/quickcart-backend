@@ -203,19 +203,21 @@ app.post("/api/forgot-password", async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     resetCodes.set(email, code);
 
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-      });
+  if (process.env.RENDER) {
+  console.log(`📧 Email sending disabled on Render. Reset code: ${code}`);
+} else if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+  });
+  await transporter.sendMail({
+    from: `"QuickCart Support" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: "QuickCart Password Reset Code",
+    text: `Your verification code is: ${code}`,
+  });
+}
 
-      await transporter.sendMail({
-        from: `"QuickCart Support" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: "QuickCart Password Reset Code",
-        text: `Your verification code is: ${code}`,
-      });
-    }
 
     console.log(`Password reset code for ${email}: ${code}`);
     res.json({ success: true, message: "Verification code sent to email." });
