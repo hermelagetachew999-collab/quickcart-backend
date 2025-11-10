@@ -17,13 +17,21 @@ mongoose.connect(process.env.MONGO_URI)
 const app = express();
 app.use(express.json());
 
-// === CORS ===
+const allowedOrigins = [
+  "https://quickcart-frontend-mu.vercel.app", // deployed frontend
+  "http://localhost:5173", // local dev
+];
+
 app.use(
   cors({
-    origin: [
-      "https://quickcart-frontend-mu.vercel.app", // deployed frontend
-      "http://localhost:5173", // local dev
-    ],
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.log("❌ Blocked by CORS:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
