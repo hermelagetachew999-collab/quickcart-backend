@@ -6,13 +6,17 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import mongoose from "mongoose";
+import { Resend } from 'resend'; // <-- ADDED: Resend import
 
 dotenv.config();
 
+// === RESEND: Initialize only if API key exists (safe for local & Render) ===
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
 // === CONNECT TO MONGODB ===
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ Connected to MongoDB"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+  .then(() => console.log("Connected to MongoDB"))
+  .catch((err) => console.error("MongoDB connection error:", err));
 
 const app = express();
 app.use(express.json());
@@ -29,7 +33,7 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        console.log("❌ Blocked by CORS:", origin);
+        console.log("Blocked by CORS:", origin);
         callback(new Error("Not allowed by CORS"));
       }
     },
@@ -155,7 +159,35 @@ app.post("/api/contact", async (req, res) => {
     return res.status(400).json({ error: "All fields are required" });
 
   try {
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    let emailSent = false;
+
+    // === RESEND: Try first (HTTPS, no port issues) ===
+    if (resend) {
+      try {
+        await resend.emails.send({
+          from: 'Contact Form <onboarding@resend.dev>',
+          to: process.env.ADMIN_EMAIL || 'hermelagetachew999@gmail.com',
+          reply_to: email,
+          subject: `New Message from ${name}`,
+          html: `
+            <h3>New Contact Form Submission</h3>
+            <p><strong>Name:</strong> ${name}</p>
+            <p><strong>Email:</strong> ${email}</p>
+            <p><strong>Message:</strong></p>
+            <blockquote style="background:#f9f9f9; padding:15px; border-left:4px solid #ccc;">
+              ${message.replace(/\n/g, '<br>')}
+            </blockquote>
+          `,
+        });
+        console.log(`Resend: Contact form email sent`);
+        emailSent = true;
+      } catch (e) {
+        console.error("Resend contact error:", e.message);
+      }
+    }
+
+    // === FALLBACK: Gmail/Nodemailer (original) ===
+    if (!emailSent && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
@@ -163,12 +195,16 @@ app.post("/api/contact", async (req, res) => {
 
       await transporter.sendMail({
         from: `"${name}" <${email}>`,
-        to: process.env.EMAIL_USER, // admin email
+        to: process.env.EMAIL_USER,
         subject: `New Contact Form Message`,
         text: message
       });
-    } else {
-      console.log(`📧 Contact email not sent. Message: ${message}`);
+      console.log(`Gmail: Contact form email sent`);
+      emailSent = true;
+    }
+
+    if (!emailSent) {
+      console.log(`Contact email not sent. Message: ${message}`);
     }
 
     console.log("Contact form:", { name, email, message });
@@ -231,7 +267,36 @@ app.post("/api/forgot-password", async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     resetCodes.set(email, code);
 
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    let emailSent = false;
+
+    // === RESEND: Try first (HTTPS, no port issues) ===
+    if (resend) {
+      try {
+        await resend.emails.send({
+          from: 'QuickCart <onboarding@resend.dev>',
+          to: email,
+          subject: 'QuickCart Password Reset Code',
+          html: `
+            <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 500px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+              <h2 style="color: #333;">Password Reset Request</h2>
+              <p>Your verification code is:</p>
+              <h1 style="background: #f0f0f0; padding: 15px; border-radius: 8px; text-align: center; letter-spacing: 3px; font-size: 28px;">
+                ${code}
+              </h1>
+              <p>This code expires in <strong>10 minutes</strong>.</p>
+              <p>If you didn't request this, ignore this email.</p>
+            </div>
+          `,
+        });
+        console.log(`Resend: Password reset code sent to ${email}`);
+        emailSent = true;
+      } catch (resendErr) {
+        console.error("Resend failed:", resendErr.message);
+      }
+    }
+
+    // === FALLBACK: Gmail/Nodemailer (original) ===
+    if (!emailSent && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
@@ -239,14 +304,17 @@ app.post("/api/forgot-password", async (req, res) => {
 
       await transporter.sendMail({
         from: `"QuickCart Support" <${process.env.EMAIL_USER}>`,
-        to: email, // user email
+        to: email,
         subject: "QuickCart Password Reset Code",
         text: `Your verification code is: ${code}`,
       });
 
-      console.log(`Password reset code sent to ${email}`);
-    } else {
-      console.log(`📧 Reset code not sent. Code: ${code}`);
+      console.log(`Gmail: Password reset code sent to ${email}`);
+      emailSent = true;
+    }
+
+    if (!emailSent) {
+      console.log(`Reset code not sent (no service). Code: ${code}`);
     }
 
     res.json({ success: true, message: "Verification code sent to email." });
@@ -282,4 +350,4 @@ app.post("/api/reset-password", async (req, res) => {
 
 // === START SERVER ===
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 Backend running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
