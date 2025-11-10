@@ -17,6 +17,7 @@ mongoose.connect(process.env.MONGO_URI)
 const app = express();
 app.use(express.json());
 
+// === CORS ===
 const allowedOrigins = [
   "https://quickcart-frontend-mu.vercel.app", // deployed frontend
   "http://localhost:5173", // local dev
@@ -151,12 +152,35 @@ app.post("/api/login", async (req, res) => {
 });
 
 // === CONTACT ===
-app.post("/api/contact", (req, res) => {
+app.post("/api/contact", async (req, res) => {
   const { name, email, message } = req.body;
-  if (!name || !email || !message) return res.status(400).json({ error: "All fields are required" });
+  if (!name || !email || !message)
+    return res.status(400).json({ error: "All fields are required" });
 
-  console.log("Contact form:", { name, email, message });
-  res.json({ success: true, message: "Thank you for your message! We will get back to you soon." });
+  try {
+    if (process.env.RENDER) {
+      // Disable email sending on Render (for now)
+      console.log(`📧 Contact email disabled on Render. Message: ${message}`);
+    } else if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+      });
+
+      await transporter.sendMail({
+        from: `"${name}" <${email}>`,
+        to: process.env.EMAIL_USER, // admin email
+        subject: `New Contact Form Message`,
+        text: message
+      });
+    }
+
+    console.log("Contact form:", { name, email, message });
+    res.json({ success: true, message: "Message sent successfully!" });
+  } catch (err) {
+    console.error("Contact form error:", err);
+    res.status(500).json({ error: "Failed to send message" });
+  }
 });
 
 // === PLACE ORDER ===
@@ -211,21 +235,20 @@ app.post("/api/forgot-password", async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     resetCodes.set(email, code);
 
-  if (process.env.RENDER) {
-  console.log(`📧 Email sending disabled on Render. Reset code: ${code}`);
-} else if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-  });
-  await transporter.sendMail({
-    from: `"QuickCart Support" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: "QuickCart Password Reset Code",
-    text: `Your verification code is: ${code}`,
-  });
-}
-
+    if (process.env.RENDER) {
+      console.log(`📧 Email sending disabled on Render. Reset code: ${code}`);
+    } else if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+      });
+      await transporter.sendMail({
+        from: `"QuickCart Support" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: "QuickCart Password Reset Code",
+        text: `Your verification code is: ${code}`,
+      });
+    }
 
     console.log(`Password reset code for ${email}: ${code}`);
     res.json({ success: true, message: "Verification code sent to email." });
