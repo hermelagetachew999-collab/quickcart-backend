@@ -2,7 +2,7 @@
   "name": "quickcart-api",
   "version": "1.0.0",
   "type": "module",
- "scripts": {
+  "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
@@ -11,6 +11,7 @@
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
-    "nodemailer": "^7.0.10"
+    "nodemailer": "^7.0.10",
+    "mongoose": "^8.19.3"
   }
 }
