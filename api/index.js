@@ -19,8 +19,8 @@ app.use(express.json());
 
 // === CORS ===
 const allowedOrigins = [
-  "https://quickcart-frontend-mu.vercel.app", // deployed frontend
-  "http://localhost:5173", // local dev
+  "https://quickcart-frontend-mu.vercel.app",
+  "http://localhost:5173",
 ];
 
 app.use(
@@ -46,7 +46,6 @@ const userSchema = new mongoose.Schema({
   password: String,
   createdAt: { type: Date, default: Date.now },
 });
-
 const User = mongoose.model("User", userSchema);
 
 const productSchema = new mongoose.Schema({
@@ -56,7 +55,6 @@ const productSchema = new mongoose.Schema({
   description: String,
   createdAt: { type: Date, default: Date.now },
 });
-
 const Product = mongoose.model("Product", productSchema);
 
 const orderSchema = new mongoose.Schema({
@@ -65,7 +63,6 @@ const orderSchema = new mongoose.Schema({
   total: Number,
   createdAt: { type: Date, default: Date.now },
 });
-
 const Order = mongoose.model("Order", orderSchema);
 
 // === TEMPORARY RESET CODE STORE ===
@@ -158,10 +155,7 @@ app.post("/api/contact", async (req, res) => {
     return res.status(400).json({ error: "All fields are required" });
 
   try {
-    if (process.env.RENDER) {
-      // Disable email sending on Render (for now)
-      console.log(`📧 Contact email disabled on Render. Message: ${message}`);
-    } else if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
@@ -173,6 +167,8 @@ app.post("/api/contact", async (req, res) => {
         subject: `New Contact Form Message`,
         text: message
       });
+    } else {
+      console.log(`📧 Contact email not sent. Message: ${message}`);
     }
 
     console.log("Contact form:", { name, email, message });
@@ -235,22 +231,24 @@ app.post("/api/forgot-password", async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     resetCodes.set(email, code);
 
-    if (process.env.RENDER) {
-      console.log(`📧 Email sending disabled on Render. Reset code: ${code}`);
-    } else if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
       });
+
       await transporter.sendMail({
         from: `"QuickCart Support" <${process.env.EMAIL_USER}>`,
-        to: email,
+        to: email, // user email
         subject: "QuickCart Password Reset Code",
         text: `Your verification code is: ${code}`,
       });
+
+      console.log(`Password reset code sent to ${email}`);
+    } else {
+      console.log(`📧 Reset code not sent. Code: ${code}`);
     }
 
-    console.log(`Password reset code for ${email}: ${code}`);
     res.json({ success: true, message: "Verification code sent to email." });
   } catch (err) {
     console.error("Forgot password error:", err);
@@ -261,10 +259,12 @@ app.post("/api/forgot-password", async (req, res) => {
 // === RESET PASSWORD ===
 app.post("/api/reset-password", async (req, res) => {
   const { email, code, newPassword } = req.body;
-  if (!email || !code || !newPassword) return res.status(400).json({ error: "All fields are required" });
+  if (!email || !code || !newPassword)
+    return res.status(400).json({ error: "All fields are required" });
 
   const validCode = resetCodes.get(email);
-  if (!validCode || validCode !== code) return res.status(400).json({ error: "Invalid or expired code" });
+  if (!validCode || validCode !== code)
+    return res.status(400).json({ error: "Invalid or expired code" });
 
   const user = await User.findOne({ email });
   if (!user) return res.status(404).json({ error: "User not found" });
