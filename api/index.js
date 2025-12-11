@@ -146,32 +146,25 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// === FORGOT PASSWORD ===
+// === FORGOT PASSWORD (DEV MODE) ===
 app.post("/api/forgot-password", async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "Email is required" });
 
   const user = await User.findOne({ email });
-  if (!user) {
-    const demoCode = Math.floor(100000 + Math.random() * 900000).toString();
-    return res.json({
-      success: true,
-      message: "Demo mode: reset code generated",
-      resetCode: demoCode,
-      note: "User not found, code is for testing frontend only"
-    });
-  }
+  if (!user) return res.status(404).json({ error: "No account found" });
 
+  // Generate reset code
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   resetCodes.set(email, code);
-  setTimeout(() => { if (resetCodes.get(email) === code) resetCodes.delete(email); }, 10*60*1000);
 
+  // Set expiration
+  setTimeout(() => resetCodes.delete(email), 10 * 60 * 1000); // 10 mins
+
+  // Try sending email (Resend/Gmail) but ignore failure
   let emailSent = false;
-  let serviceUsed = "none";
-
-  // Try Resend
-  if (resend && process.env.RESEND_API_KEY) {
-    try {
+  try {
+    if (resend) {
       await resend.emails.send({
         from: 'QuickCart <onboarding@resend.dev>',
         to: [email],
@@ -180,49 +173,20 @@ app.post("/api/forgot-password", async (req, res) => {
         html: `<p>Your verification code is: <strong>${code}</strong></p>`
       });
       emailSent = true;
-      serviceUsed = "Resend";
-    } catch (err) {
-      console.warn(`Resend failed: ${err.message}`);
     }
+  } catch (e) {
+    console.log("❌ Email sending failed (ignored in dev):", e.message);
   }
 
-  // Gmail fallback
-  if (!emailSent && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-    try {
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-      });
-      await transporter.sendMail({
-        from: `"QuickCart" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: 'QuickCart Password Reset Code',
-        text: `Your verification code is: ${code}`,
-      });
-      emailSent = true;
-      serviceUsed = "Gmail";
-    } catch (err) {
-      console.warn(`Gmail failed: ${err.message}`);
-    }
-  }
-
-  // always return code for testing
-  if (!emailSent) {
-    return res.json({
-      success: true,
-      message: "Demo mode: reset code generated",
-      resetCode: code,
-      note: "Email not sent due to domain restrictions; use this code to test frontend"
-    });
-  }
-
+  // ALWAYS return the code in JSON for development
   res.json({
     success: true,
-    message: "Reset code sent! Check your email (or use demo code if not delivered).",
-    serviceUsed,
-    resetCode: code // optional, useful for testing
+    message: "Reset code generated (dev mode, may not be emailed)",
+    resetCode: code,
+    emailSent
   });
 });
+
 
 // === RESET PASSWORD ===
 app.post("/api/reset-password", async (req, res) => {
