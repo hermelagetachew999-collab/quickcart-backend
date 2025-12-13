@@ -1,0 +1,11 @@
+❌ MongoDB connection error: MongooseError: The `uri` parameter to `openUri()` must be a string, got "undefined". Make sure the first parameter to `mongoose.connect()` or `mongoose.createConnection()` is a string.
+    at NativeConnection.createClient (C:\Users\THIS-PC\quickcart-backend\api\node_modules\mongoose\lib\drivers\node-mongodb-native\connection.js:237:11)
+    at NativeConnection.openUri (C:\Users\THIS-PC\quickcart-backend\api\node_modules\mongoose\lib\connection.js:1075:34)
+    at Mongoose.connect (C:\Users\THIS-PC\quickcart-backend\api\node_modules\mongoose\lib\mongoose.js:450:15)
+    at file:///C:/Users/THIS-PC/quickcart-backend/api/index.js:17:10
+    at ModuleJob.run (node:internal/modules/esm/module_job:377:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:691:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+🚀 Backend running on port 3001
+📧 Test page: http://localhost:3001/email-test
+🔧 API status: http://localhost:3001/api
