@@ -75,7 +75,8 @@ app.post("/api/test-email", async (req, res) => {
   if (!resend) return res.status(500).json({ error: "Resend not configured" });
 
   const { email } = req.body;
-  const testEmail = email || process.env.ADMIN_EMAIL || "hermelagetachew999@gmail.com";
+  if (!email) return res.status(400).json({ error: "Email is required for test sends" });
+  const testEmail = email;
 
   try {
     const result = await resend.emails.send({
