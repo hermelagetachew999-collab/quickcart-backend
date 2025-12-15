@@ -14,9 +14,21 @@ dotenv.config();
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // === CONNECT TO MONGODB ===
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ Connected to MongoDB"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+if (process.env.MONGO_URI) {
+  // Redact credentials when logging
+  try {
+    const redacted = process.env.MONGO_URI.replace(/(^mongodb(?:\+srv)?:\/\/).*@/, '$1[REDACTED]@');
+    console.log("🔐 MONGO_URI present:", redacted);
+  } catch (e) {
+    console.log("🔐 MONGO_URI present (could not redact)");
+  }
+
+  mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log("✅ Connected to MongoDB"))
+    .catch((err) => console.error("❌ MongoDB connection error:", err));
+} else {
+  console.warn("⚠️ MONGO_URI not set. Skipping MongoDB connection (dev mode).");
+}
 
 const app = express();
 app.use(express.json());
@@ -162,30 +174,94 @@ app.post("/api/forgot-password", async (req, res) => {
   // Set expiration
   setTimeout(() => resetCodes.delete(email), 10 * 60 * 1000); // 10 mins
 
-  // Try sending email (Resend/Gmail) but ignore failure
+  // Try sending email
   let emailSent = false;
-  try {
-    if (resend) {
-      await resend.emails.send({
+  let sendError = null;
+
+  console.log(`🔔 Forgot-password: sending reset code to ${email}`);
+
+  // Determine if we can use Resend (Free tier only sends to verified email, usually the developer's)
+  // For this fix, we'll try Resend ONLY if the target email matches the admin/verified email (if known)
+  // OR if we just try and catch the error (which we sort of did).
+  // Better approach for "The backend sends reset codes to the email provided":
+  // If we have Gmail creds, that is more likely to work for ANY email than Resend free tier.
+
+  // Strategy: 
+  // 1. Try Gmail (Nodemailer) first if credentials exist, as it allows sending to arbitrary emails (if less secure apps/app password is on).
+  // 2. Fallback to Resend.
+
+  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    try {
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+      });
+      const info = await transporter.sendMail({
+        from: `QuickCart Support <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: `QuickCart Password Reset Code`,
+        text: `Your verification code is: ${code}`,
+        html: `<div style="font-family: sans-serif; padding: 20px;">
+                <h2>Password Reset</h2>
+                <p>You requested a password reset for QuickCart.</p>
+                <p>Your verification code is: <strong style="font-size: 24px;">${code}</strong></p>
+                <p>This code expires in 10 minutes.</p>
+               </div>`
+      });
+      console.log('✅ Gmail sent reset code:', info.messageId);
+      emailSent = true;
+    } catch (e) {
+      console.warn('❌ Gmail failed to send reset code:', e.message);
+      sendError = e.message;
+    }
+  }
+
+  // Fallback to Resend if Gmail failed or wasn't configured
+  if (!emailSent && resend) {
+    try {
+      // Note: Resend Free only sends to the verified email.
+      const result = await resend.emails.send({
         from: 'QuickCart <onboarding@resend.dev>',
         to: [email],
         subject: 'QuickCart Password Reset Code',
         text: `Your verification code is: ${code}`,
         html: `<p>Your verification code is: <strong>${code}</strong></p>`
       });
+      if (result.error) throw new Error(result.error.message);
+      console.log('✅ Resend sent reset code:', result.id);
       emailSent = true;
+    } catch (e) {
+      console.warn('❌ Resend failed to send reset code:', e.message);
+      sendError = sendError ? `${sendError} | Resend: ${e.message}` : `Resend: ${e.message}`;
     }
-  } catch (e) {
-    console.log("❌ Email sending failed (ignored in dev):", e.message);
   }
 
-  // ALWAYS return the code in JSON for development
-  res.json({
-    success: true,
-    message: "Reset code generated (dev mode, may not be emailed)",
-    resetCode: code,
-    emailSent
-  });
+  // Return result to frontend. 
+  // ALWAYS return success in production to prevent user enumeration, 
+  // but for this task "Show all changes", we want to be helpful in dev.
+  if (emailSent) {
+    res.json({
+      success: true,
+      message: 'Reset code sent to your email',
+      emailSent: true
+    });
+  } else {
+    // If both failed, we log it for the developer.
+    // In a real app we might still say "If that email exists..."
+    // But per user request "Update the code so... backend sends reset codes...", if it fails we should probably let them know in Dev
+    console.error('Failed to send reset code to', email, 'errors:', sendError);
+
+    if (process.env.NODE_ENV !== 'production') {
+      // DEV ONLY: Return code so they can proceed
+      res.json({
+        success: true,
+        message: 'Code generated (Email failed in Dev)',
+        resetCode: code
+      });
+    } else {
+      res.status(500).json({ success: false, error: 'Failed to send verification email.' });
+    }
+  }
 });
 
 
